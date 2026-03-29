@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.internal.services.hello_service import HelloService
+from ..internal.services.hello_service import HelloService
 
 router = APIRouter(prefix="/hello", tags=["hello"])
 
@@ -7,4 +7,4 @@ router = APIRouter(prefix="/hello", tags=["hello"])
 async def hello(
     service: HelloService = Depends(HelloService)
 ):
-    return await service.hello();
+    return await service.hello()

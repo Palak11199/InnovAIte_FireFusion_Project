@@ -4,4 +4,3 @@ class HelloService:
 
     async def hello(self) -> str:
         return "Hello, World!"
-

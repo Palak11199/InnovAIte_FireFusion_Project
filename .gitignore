@@ -1,1 +1,21 @@
-__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Virtual environments
+firefusion_env/
+venv/
+.env
+
+# OS metadata
+.DS_Store
+*.swp
+
+# Data files (large)
+*.geojson
+*.csv
