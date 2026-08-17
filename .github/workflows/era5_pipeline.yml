@@ -1,0 +1,48 @@
+name: FireFusion - ERA5 Weather Pipeline
+
+# Unlike firms_pipeline.yml, this runs LESS frequently and with a LONGER
+# timeout: ERA5/ERA5-Land isn't near-real-time (there's a ~6 day publish
+# lag, see LAG_DAYS in era5_ingest.py), so running it more than once a
+# day gains nothing, and CDS requests are queued server-side and can take
+# well over 10 minutes to complete.
+on:
+  schedule:
+    # Once daily at 03:00 UTC — arbitrary, adjust as needed. No benefit
+    # to running more often given the publish lag.
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}   # manual "Run workflow" button, same as FIRMS
+
+jobs:
+  run-era5-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90   # generous buffer for CDS queue times; adjust based on observed run times
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install cdsapi xarray netCDF4 psycopg2-binary
+
+      - name: Run ERA5 ingestion pipeline
+        env:
+          SUPABASE_HOST: ${{ secrets.SUPABASE_HOST }}
+          SUPABASE_DB: ${{ secrets.SUPABASE_DB }}
+          SUPABASE_USER: ${{ secrets.SUPABASE_USER }}
+          SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
+          SUPABASE_PORT: ${{ secrets.SUPABASE_PORT }}
+          CDS_API_KEY: ${{ secrets.CDS_API_KEY }}
+        run: python era5_ingest.py
+
+      - name: Upload run log as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: era5-pipeline-log
+          path: era5_pipeline.log
+          retention-days: 14
