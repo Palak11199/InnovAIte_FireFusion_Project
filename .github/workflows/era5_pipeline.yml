@@ -27,7 +27,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install cdsapi xarray netCDF4 psycopg2-binary
+        run: pip install cdsapi xarray netCDF4 dask psycopg2-binary
 
       - name: Run ERA5 ingestion pipeline
         env:

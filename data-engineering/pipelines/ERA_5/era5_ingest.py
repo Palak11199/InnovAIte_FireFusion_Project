@@ -72,6 +72,8 @@ Developer Instructions compliance (matching extract_firms.py's pattern):
 
 import os
 import sys
+import glob
+import zipfile
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -130,24 +132,35 @@ ERA5_VARS = ["2m_dewpoint_temperature", "total_precipitation",
 # ---------------------------------------------------------------------
 # Extraction
 # ---------------------------------------------------------------------
-def _diagnose_download(path):
-    """CDS can return something other than real NetCDF even when
-    data_format=netcdf was requested and retrieve() didn't raise —
-    most commonly an error JSON/HTML page (license not yet accepted for
-    this dataset, or an invalid API key) or a ZIP archive (CDS sometimes
-    bundles multiple variables into a zip). xarray's own error for this
-    ("no matching IO backend") gives no hint which of these it is — this
-    peeks at the raw bytes first so a failure here is diagnosable instead
-    of a generic backend error."""
+def _load_dataset(path):
+    """Load a CDS download that may be a single NetCDF file, a ZIP
+    archive of multiple per-variable NetCDF files (confirmed behavior as
+    of run_id 17 — CDS's current API bundles this multi-variable
+    data_format=netcdf request into a zip rather than one combined
+    file), or an error response saved where real data was expected
+    (license not accepted / bad API key). Handles all three explicitly
+    instead of letting xarray fail with its generic "no matching IO
+    backend" error."""
     with open(path, "rb") as f:
         head = f.read(500)
+
     if head[:2] == b"PK":
-        raise RuntimeError(
-            f"{path} is a ZIP archive, not a single NetCDF file. CDS "
-            f"sometimes bundles multiple variables into a zip. Unzip it "
-            f"and open the .nc file(s) inside, or split the request into "
-            f"one variable at a time."
-        )
+        extract_dir = path + "_extracted"
+        os.makedirs(extract_dir, exist_ok=True)
+        with zipfile.ZipFile(path) as zf:
+            zf.extractall(extract_dir)
+        nc_files = sorted(glob.glob(os.path.join(extract_dir, "*.nc")))
+        if not nc_files:
+            raise RuntimeError(
+                f"{path} is a ZIP archive but contains no .nc files. "
+                f"Contents: {os.listdir(extract_dir)}"
+            )
+        log.info(f"{path}: ZIP archive with {len(nc_files)} NetCDF file(s) — merging: {nc_files}")
+        # combine="by_coords" merges the per-variable files into one
+        # Dataset as long as they share the same lat/lon/time grid,
+        # which they should since they came from the same request.
+        return xr.open_mfdataset(nc_files, combine="by_coords")
+
     stripped = head.strip()
     if stripped.startswith(b"{") or stripped.startswith(b"<"):
         raise RuntimeError(
@@ -161,7 +174,9 @@ def _diagnose_download(path):
             f"and both must be accepted), or (2) CDS_API_KEY is missing, "
             f"malformed, or a placeholder rather than your real key."
         )
-    log.info(f"{path}: {len(head)}+ bytes, looks like binary data (not JSON/HTML/zip) — proceeding to xr.open_dataset.")
+
+    log.info(f"{path}: looks like a single binary NetCDF file — opening directly.")
+    return xr.open_dataset(path)
 
 
 def fetch_era5_land(target_date, lat, lon, out_path):
@@ -184,8 +199,7 @@ def fetch_era5_land(target_date, lat, lon, out_path):
         },
         out_path,
     )
-    _diagnose_download(out_path)
-    return xr.open_dataset(out_path)
+    return _load_dataset(out_path)
 
 
 def fetch_era5_single_levels(target_date, lat, lon, out_path):
@@ -206,8 +220,7 @@ def fetch_era5_single_levels(target_date, lat, lon, out_path):
         },
         out_path,
     )
-    _diagnose_download(out_path)
-    return xr.open_dataset(out_path)
+    return _load_dataset(out_path)
 
 
 # ---------------------------------------------------------------------
