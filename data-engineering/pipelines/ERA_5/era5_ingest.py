@@ -308,9 +308,24 @@ def extract_hourly_rows(ds_land, ds_single, lat, lon, target_date):
 # Load
 # ---------------------------------------------------------------------
 def get_existing_locations(cur):
-    """Reuse the 4 known grid cells already in Location_Registry rather
-    than creating new ones."""
-    cur.execute("SELECT location_id, grid_latitude, grid_longitude FROM Location_Registry ORDER BY location_id;")
+    """Target only grid cells that actually have weather data, not every
+    row in Location_Registry. Location_Registry is a shared hub also
+    populated by the FIRMS fire pipeline (confirmed: it had grown to 99
+    rows, only a handful of which are weather-relevant) — pulling all of
+    it here would submit CDS requests for irrelevant fire-hotspot cells
+    and blow well past the workflow's timeout. Deriving the location set
+    from weather_observation itself keeps this correct automatically:
+    after the location_id repair, this returns the real historical
+    weather locations, and any location this script itself inserts data
+    for going forward is legitimately weather-relevant by definition."""
+    cur.execute(
+        """
+        SELECT DISTINCT w.location_id, l.grid_latitude, l.grid_longitude
+        FROM weather_observation w
+        JOIN location_registry l ON l.location_id = w.location_id
+        ORDER BY w.location_id;
+        """
+    )
     return cur.fetchall()
 
 
