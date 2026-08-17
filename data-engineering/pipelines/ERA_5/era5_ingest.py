@@ -79,6 +79,7 @@ from datetime import datetime, timedelta, timezone
 
 import cdsapi
 import xarray as xr
+import pandas as pd
 import psycopg2
 import psycopg2.extras
 
@@ -248,6 +249,23 @@ def _time_dim_name(ds):
     )
 
 
+def _select_nearest_time(ds, time_dim, target_ts):
+    """Select the timestep nearest to target_ts by position (isel), not
+    by value (sel) — this sidesteps dtype-mismatch errors between
+    xarray's internal datetime64 handling and Python's tz-aware datetime
+    objects. Confirmed on a real run: one dataset came back as
+    datetime64[us, UTC] (tz-aware, microsecond precision) while our query
+    value got coerced to datetime64[ns] (naive, nanosecond precision),
+    and xarray's .sel(method='nearest') refuses to compare the two
+    dtypes. Normalizing everything to plain tz-naive UTC pandas
+    Timestamps before finding the nearest index avoids that entirely,
+    regardless of whatever dtype/precision CDS returns next time."""
+    coord_times = pd.to_datetime(ds[time_dim].values, utc=True).tz_localize(None)
+    target_naive = pd.Timestamp(target_ts).tz_localize(None) if pd.Timestamp(target_ts).tzinfo else pd.Timestamp(target_ts)
+    idx = int(abs(coord_times - target_naive).argmin())
+    return ds.isel(**{time_dim: idx})
+
+
 def extract_hourly_rows(ds_land, ds_single, lat, lon, target_date):
     """Select the nearest grid point from each dataset and return one
     row per hour with all 7 ERA5 fields merged."""
@@ -264,8 +282,8 @@ def extract_hourly_rows(ds_land, ds_single, lat, lon, target_date):
         single_pt = ds_single.sel(latitude=lat, longitude=lon, method="nearest")
 
         try:
-            land_hour = land_pt.sel(**{land_time_dim: ts}, method="nearest")
-            single_hour = single_pt.sel(**{single_time_dim: ts}, method="nearest")
+            land_hour = _select_nearest_time(land_pt, land_time_dim, ts)
+            single_hour = _select_nearest_time(single_pt, single_time_dim, ts)
         except Exception as e:
             log.error(f"Time selection failed for hour {hour}: {e}")
             continue
