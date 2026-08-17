@@ -37,7 +37,7 @@ jobs:
           SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
           SUPABASE_PORT: ${{ secrets.SUPABASE_PORT }}
           CDS_API_KEY: ${{ secrets.CDS_API_KEY }}
-        run: python era5_ingest.py
+        run: python python data-engineering/pipelines/era5_ingest.py
 
       - name: Upload run log as artifact
         if: always()
