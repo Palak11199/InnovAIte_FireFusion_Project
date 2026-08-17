@@ -29,9 +29,12 @@ OUTPUT — GeoJSON FeatureCollection, one Feature per input cell
     is_burning_predicted : [horizon] fire_probability > fire_threshold
     risk_score           : mean fire_probability across the horizon
     risk_levels          : [horizon] discrete level 0..4 (see RISK_LEVEL_THRESHOLDS)
+    risk_labels           : [horizon] label per risk level (see RISK_LEVEL_LABELS)
+    risk_factor           : [horizon] frontend risk_factor convention
+                           (1=extreme..5=very low). Inverse of risk_levels
     forecast             : [horizon, n_output_channels] raw model output, one row per
                            horizon step. For the fire-probability model
-                           n_output_channels == 1, so a row is [p].
+                           n_output_channels == 1, so a row is [p]
 
 Keep DEFAULT_FEATURE_NAMES, DEFAULT_INPUT_STEPS and DEFAULT_HORIZON in sync with
 ``src/training/ts_convlstm_forecaster_train.py``.
@@ -166,6 +169,7 @@ class ForecastPropertiesOut(BaseModel):
     risk_score: Optional[float] = Field(None, description="Mean fire_probability across the horizon")
     risk_levels: Optional[List[int]] = Field(None, description="Discrete risk level 0..4 per horizon step")
     risk_labels: Optional[List[str]] = Field(None, description="Label per risk level (see RISK_LEVEL_LABELS)")
+    risk_factor: Optional[List[int]] = Field(None, description="Frontend risk_factor convention (1=extreme..5=very low), one per horizon step. Inverse of risk_levels.")
     
     forecast: Optional[List[List[float]]] = Field(
         None, description="[horizon, n_output_channels] raw model output, one row per horizon step"

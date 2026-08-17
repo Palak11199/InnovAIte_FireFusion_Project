@@ -121,6 +121,16 @@ export default function Dashboard() {
       <main className="ff-dashboard">
         <section className="ff-hero">
           <div className="ff-hero-overlay"></div>
+          <div className="ff-fire-particles">
+            <span className="particle p-1"></span>
+            <span className="particle p-2"></span>
+            <span className="particle p-3"></span>
+            <span className="particle p-4"></span>
+            <span className="particle p-5"></span>
+            <span className="particle p-6"></span>
+            <span className="particle p-7"></span>
+            <span className="particle p-8"></span>
+          </div>
 
           <div className="ff-hero-content">
             <div>

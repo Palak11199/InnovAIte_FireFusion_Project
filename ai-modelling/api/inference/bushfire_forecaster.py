@@ -6,7 +6,7 @@ from typing import Any, Optional, Tuple
 import numpy as np
 import torch
 
-from api.schemas.bushfire import ForecastRequest, ForecastResponse, GeoFeatureOut, ForecastPropertiesOut, DEFAULT_FEATURE_NAMES
+from api.schemas.bushfire import ForecastRequest, ForecastResponse, GeoFeatureOut, ForecastPropertiesOut, DEFAULT_FEATURE_NAMES, RISK_LEVEL_LABELS, prob_to_risk_level
 from api.model_loader import LoadedModel
 
 
@@ -169,6 +169,28 @@ def _apply_scaler(x: np.ndarray, scaler: Any) -> np.ndarray:
     return x_scaled.reshape(original_shape)
 
 
+def _compute_risk_fields(cell_probs: list[float]) -> dict:
+    """
+    Derive risk_levels, risk_labels, and risk_factor from per-horizon-step
+    fire probabilities. One entry per horizon step, consistent with
+    fire_probability/is_burning_predicted.
+    """
+    risk_levels = [prob_to_risk_level(p) for p in cell_probs]
+    return {
+        "risk_levels": risk_levels,
+        "risk_labels": [RISK_LEVEL_LABELS[lvl] for lvl in risk_levels],
+        "risk_factor": [_risk_level_to_frontend_factor(lvl) for lvl in risk_levels],
+    }
+
+
+def _risk_level_to_frontend_factor(level: int) -> int:
+    """
+    Convert AI Modelling schema risk level (0=LOW..4=HIGH) to the frontend's
+    risk_factor convention (1=extreme..5=very low).
+    """
+    return len(RISK_LEVEL_LABELS) - level
+
+
 def _postprocess_forecasts(
     probs: np.ndarray,
     feature_metas: list[dict],
@@ -217,6 +239,7 @@ def _postprocess_forecasts(
                     model_id=model_id,
                     grid_row=row,
                     grid_col=col,
+                    **_compute_risk_fields(cell_probs),
                 )
                 feature_out = GeoFeatureOut(
                     type="Feature",
@@ -243,6 +266,7 @@ def _postprocess_forecasts(
                 model_id=model_id,
                 grid_row=meta.get("grid_row"),
                 grid_col=meta.get("grid_col"),
+                **_compute_risk_fields(cell_probs),
             )
             feature_out = GeoFeatureOut(
                 type="Feature",

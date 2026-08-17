@@ -169,19 +169,21 @@ def _load_bushfire_forecaster(model_id: str, domain: str, ckpt: Path, scaler_pat
     
     # Extract metadata from scaler or set defaults
     metadata = {}
-    if scaler_data and isinstance(scaler_data, dict):  # <-- Now safe
+    if scaler_data and isinstance(scaler_data, dict):
         metadata = {
-            "features": scaler_data.get("features", DEFAULT_FEATURE_NAMES),
-            "input_steps": scaler_data.get("input_steps", 60),
+            "weather_features": scaler_data.get("weather_features", DEFAULT_FEATURE_NAMES),
+            "input_steps": scaler_data.get("input_steps", 30),
             "horizon": scaler_data.get("horizon", 2),
             "grid_shape": scaler_data.get("grid_shape"),
+            "fire_threshold": scaler_data.get("fire_threshold", 0.5),
         }
     else:
         metadata = {
             "features": DEFAULT_FEATURE_NAMES,
-            "input_steps": 60,
+            "input_steps": 30,
             "horizon": 2,
             "grid_shape": None,
+            "fire_threshold": 0.5,
         }
     
     return LoadedModel(
