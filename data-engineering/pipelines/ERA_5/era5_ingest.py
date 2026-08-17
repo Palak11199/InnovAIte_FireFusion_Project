@@ -130,6 +130,40 @@ ERA5_VARS = ["2m_dewpoint_temperature", "total_precipitation",
 # ---------------------------------------------------------------------
 # Extraction
 # ---------------------------------------------------------------------
+def _diagnose_download(path):
+    """CDS can return something other than real NetCDF even when
+    data_format=netcdf was requested and retrieve() didn't raise —
+    most commonly an error JSON/HTML page (license not yet accepted for
+    this dataset, or an invalid API key) or a ZIP archive (CDS sometimes
+    bundles multiple variables into a zip). xarray's own error for this
+    ("no matching IO backend") gives no hint which of these it is — this
+    peeks at the raw bytes first so a failure here is diagnosable instead
+    of a generic backend error."""
+    with open(path, "rb") as f:
+        head = f.read(500)
+    if head[:2] == b"PK":
+        raise RuntimeError(
+            f"{path} is a ZIP archive, not a single NetCDF file. CDS "
+            f"sometimes bundles multiple variables into a zip. Unzip it "
+            f"and open the .nc file(s) inside, or split the request into "
+            f"one variable at a time."
+        )
+    stripped = head.strip()
+    if stripped.startswith(b"{") or stripped.startswith(b"<"):
+        raise RuntimeError(
+            f"{path} looks like an error response (JSON/HTML), not real "
+            f"NetCDF data — the request was likely rejected server-side "
+            f"even though retrieve() didn't raise. First bytes:\n"
+            f"{head!r}\n"
+            f"Most likely causes: (1) the license for this dataset "
+            f"hasn't been accepted yet on the CDS website (see "
+            f"CDS_Setup.md step 2 — each dataset's license is separate "
+            f"and both must be accepted), or (2) CDS_API_KEY is missing, "
+            f"malformed, or a placeholder rather than your real key."
+        )
+    log.info(f"{path}: {len(head)}+ bytes, looks like binary data (not JSON/HTML/zip) — proceeding to xr.open_dataset.")
+
+
 def fetch_era5_land(target_date, lat, lon, out_path):
     """Pull the 3 era5land_* fields for one grid cell, one date, all
     24 hours. Returns the xarray Dataset."""
@@ -150,6 +184,7 @@ def fetch_era5_land(target_date, lat, lon, out_path):
         },
         out_path,
     )
+    _diagnose_download(out_path)
     return xr.open_dataset(out_path)
 
 
@@ -171,6 +206,7 @@ def fetch_era5_single_levels(target_date, lat, lon, out_path):
         },
         out_path,
     )
+    _diagnose_download(out_path)
     return xr.open_dataset(out_path)
 
 
