@@ -230,10 +230,32 @@ def kelvin_to_celsius(k):
     return None if k is None else float(k) - 273.15
 
 
+def _time_dim_name(ds):
+    """CDS's returned datasets have been observed using 'valid_time' as
+    the time coordinate rather than 'time' (confirmed on a real run —
+    every reanalysis-era5-land response so far has come back with
+    dimensions {'valid_time': 24}, not 'time'). Detect whichever name is
+    actually present instead of hardcoding one, since this has already
+    proven inconsistent across CDS API versions/datasets."""
+    for candidate in ("time", "valid_time"):
+        if candidate in ds.coords or candidate in ds.dims:
+            return candidate
+    raise RuntimeError(
+        f"Neither 'time' nor 'valid_time' found in dataset coordinates: "
+        f"{list(ds.coords)}. CDS may have changed naming again — check "
+        f"the actual coordinate names for this response and add the new "
+        f"one to the candidates list above."
+    )
+
+
 def extract_hourly_rows(ds_land, ds_single, lat, lon, target_date):
     """Select the nearest grid point from each dataset and return one
     row per hour with all 7 ERA5 fields merged."""
     rows = []
+    land_time_dim = _time_dim_name(ds_land)
+    single_time_dim = _time_dim_name(ds_single)
+    log.info(f"Time dimension detected: land='{land_time_dim}', single-levels='{single_time_dim}'")
+
     for hour in range(24):
         ts = datetime(target_date.year, target_date.month, target_date.day,
                        hour, 0, tzinfo=timezone.utc)
@@ -241,13 +263,9 @@ def extract_hourly_rows(ds_land, ds_single, lat, lon, target_date):
         land_pt = ds_land.sel(latitude=lat, longitude=lon, method="nearest")
         single_pt = ds_single.sel(latitude=lat, longitude=lon, method="nearest")
 
-        # NOTE: exact variable/time-dim names in the returned NetCDF can
-        # vary slightly by CDS API version (e.g. "valid_time" vs "time").
-        # Adjust the .sel(time=...) / indexing below if xr.open_dataset
-        # shows different dimension names when you first run this.
         try:
-            land_hour = land_pt.sel(time=ts, method="nearest")
-            single_hour = single_pt.sel(time=ts, method="nearest")
+            land_hour = land_pt.sel(**{land_time_dim: ts}, method="nearest")
+            single_hour = single_pt.sel(**{single_time_dim: ts}, method="nearest")
         except Exception as e:
             log.error(f"Time selection failed for hour {hour}: {e}")
             continue
