@@ -72,6 +72,7 @@ Developer Instructions compliance (matching extract_firms.py's pattern):
 
 import os
 import sys
+import math
 import glob
 import zipfile
 import logging
@@ -227,8 +228,27 @@ def fetch_era5_single_levels(target_date, lat, lon, out_path):
 # ---------------------------------------------------------------------
 # Transform
 # ---------------------------------------------------------------------
+def _clean_float(v):
+    """CDS/ERA5-Land can return NaN for a grid point outside that
+    dataset's actual coverage — confirmed on a real run: two of the four
+    weather grid cells sit right at Victoria's coastal boundary, and
+    reanalysis-era5-land (land-only) returned NaN for them while
+    reanalysis-era5-single-levels (covers ocean too) returned real
+    values for the same points. NaN is a valid IEEE-754 float and
+    inserts into a double precision column silently — a plain
+    `IS NOT NULL` check downstream will NOT catch it, which makes an
+    un-cleaned NaN worse than an honest NULL, not better. Convert NaN to
+    real Python None (SQL NULL) so missing coverage is represented
+    honestly instead of as a poisoned numeric value."""
+    if v is None:
+        return None
+    fv = float(v)
+    return None if math.isnan(fv) else fv
+
+
 def kelvin_to_celsius(k):
-    return None if k is None else float(k) - 273.15
+    k = _clean_float(k)
+    return None if k is None else k - 273.15
 
 
 def _time_dim_name(ds):
@@ -290,15 +310,15 @@ def extract_hourly_rows(ds_land, ds_single, lat, lon, target_date):
 
         row = {
             "datetime_record": ts,
-            "era5land_temperature_2m_c": kelvin_to_celsius(float(land_hour["t2m"].values)),
-            "era5land_skin_temperature_c": kelvin_to_celsius(float(land_hour["skt"].values)),
+            "era5land_temperature_2m_c": kelvin_to_celsius(land_hour["t2m"].values),
+            "era5land_skin_temperature_c": kelvin_to_celsius(land_hour["skt"].values),
             # Left in native accumulated J/m^2 — see de-accumulation caveat above.
-            "era5land_surface_solar_radiation_downwards": float(land_hour["ssrd"].values),
-            "era5_dewpoint_temperature_2m_c": kelvin_to_celsius(float(single_hour["d2m"].values)),
+            "era5land_surface_solar_radiation_downwards": _clean_float(land_hour["ssrd"].values),
+            "era5_dewpoint_temperature_2m_c": kelvin_to_celsius(single_hour["d2m"].values),
             # Left in native metres — convert x1000 for mm if required.
-            "era5_total_precipitation": float(single_hour["tp"].values),
-            "era5_u_component_of_wind_10m": float(single_hour["u10"].values),
-            "era5_v_component_of_wind_10m": float(single_hour["v10"].values),
+            "era5_total_precipitation": _clean_float(single_hour["tp"].values),
+            "era5_u_component_of_wind_10m": _clean_float(single_hour["u10"].values),
+            "era5_v_component_of_wind_10m": _clean_float(single_hour["v10"].values),
         }
         rows.append(row)
     return rows
